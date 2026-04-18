@@ -7,7 +7,6 @@ on:
 
 env:
   PROOT_REPO: "https://github.com/proot-me/proot.git"
-  DOCKCROSS_IMAGE: "dockcross/linux-arm64"
 
 jobs:
   build:
@@ -48,18 +47,23 @@ jobs:
           echo "Version ${{ steps.check-release.outputs.tag }} already released. Skipping."
           exit 78
 
-      - name: Build with dockcross
+      - name: Install ARM64 cross-compile toolchain
         run: |
-          # Run dockcross to build ARM64 static binary
-          docker run --rm -v "$PWD/proot-src:/workdir/proot-src" -w /workdir/proot-src \
-            ${{ env.DOCKCROSS_IMAGE }} \
-            bash -c '
-              make -C src proot GIT=false \
-                CROSS_COMPILE=aarch64-linux-gnu- \
-                LDFLAGS="-static" \
-                CC=aarch64-linux-gnu-gcc \
-                LD=aarch64-linux-gnu-ld
-            '
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-aarch64-linux-gnu \
+            libc6-dev-arm64-cross \
+            libtalloc-dev:arm64 \
+            libarchive-dev:arm64 \
+            pkg-config-aarch64-linux-gnu
+
+      - name: Build proot
+        run: |
+          cd proot-src
+          make -C src proot GIT=false \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            LDFLAGS="-static" \
+            CC=aarch64-linux-gnu-gcc
 
       - name: Package
         run: |
@@ -68,8 +72,8 @@ jobs:
           # Copy binary from src directory
           cp proot-src/src/proot dist/proot-${{ steps.clone.outputs.version }}-arm64-linux-glibc
 
-          # Strip binary to reduce size
-          strip dist/proot-*
+          # Show binary info
+          file dist/proot-*
 
           # Create tarball
           cd dist
@@ -77,7 +81,6 @@ jobs:
 
           # Show info
           ls -lh
-          file proot-*.tar.gz
 
       - name: Create Release
         if: steps.check-release.outputs.exists == 'false'

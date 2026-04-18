@@ -81,10 +81,10 @@ jobs:
       - name: Build proot
         run: |
           cd proot-src
-          # Add ARM64 library path and link talloc/archive explicitly
+          # Use dynamic linking (ARM64 talloc has no static library)
           make -C src proot GIT=false \
             CROSS_COMPILE=aarch64-linux-gnu- \
-            LDFLAGS="-static -L/usr/aarch64-linux-gnu/lib" \
+            LDFLAGS="-L/usr/aarch64-linux-gnu/lib" \
             CC=aarch64-linux-gnu-gcc \
             PYTHON_CONFIG=/bin/false \
             HAS_PYTHON_CONFIG=""

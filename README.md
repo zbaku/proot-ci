@@ -4,7 +4,7 @@
 
 ## 功能
 
-- 每 15 天自动检测上游 [proot-me/proot](https://github.com/proot-me/proot) 是否有新版本
+- 每月 1 号自动检测上游 [proot-me/proot](https://github.com/proot-me/proot) 是否有新版本
 - 使用 dockcross 交叉编译生成 ARM64 (aarch64) 静态二进制
 - 自动发布到 GitHub Releases
 - 支持手动触发构建
@@ -81,7 +81,7 @@ make -C src proot GIT=false LDFLAGS="-static"
 ## CI/CD 工作流
 
 ```
-每15天自动检测上游
+每月1号自动检测上游
        │
        ▼
   有新版本？ ──否──→ 结束

@@ -2,7 +2,7 @@ name: Build proot ARM64 Static
 
 on:
   schedule:
-    - cron: '0 0 */15 * *'  # Every 15 days
+    - cron: '0 0 1 * *'  # First day of every month
   workflow_dispatch:         # Manual trigger
 
 env:

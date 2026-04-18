@@ -82,7 +82,8 @@ jobs:
             -DHAVE_CONFIG_H \
             -I. \
             -Ilib/replace \
-            -Ilib/ccan
+            -Ilib/ccan \
+            -Ibin/default
           ar rcs libtalloc.a talloc.o
           sudo cp libtalloc.a /usr/local/lib/
           sudo cp talloc.h /usr/local/include/

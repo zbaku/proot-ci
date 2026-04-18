@@ -70,6 +70,10 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libarchive-dev \
             libseccomp-dev \
+            autoconf \
+            automake \
+            libtool \
+            pkg-config \
             make \
             git \
             bc
@@ -77,8 +81,10 @@ jobs:
       - name: Build static libtalloc
         run: |
           # 从源码编译 static libtalloc
-          git clone --depth=1 https://github.com/talloc/talloc.git talloc-src
-          cd talloc-src
+          cd /tmp
+          curl -sL https://github.com/talloc/talloc/archive/refs/tags/v2.4.0.tar.gz -o talloc.tar.gz
+          tar -xzf talloc.tar.gz
+          cd talloc-2.4.0
           ./autogen.sh
           ./configure --host=aarch64-linux-gnu --prefix=/usr/local --enable-static --disable-shared
           make -j$(nproc)

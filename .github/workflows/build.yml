@@ -75,7 +75,8 @@ jobs:
             libseccomp-dev \
             make \
             git \
-            bc
+            bc \
+            binutils-gold
 
           # 安装 Android ashmem stub header（termux proot 需要）
           sudo mkdir -p /usr/include/linux
@@ -112,6 +113,9 @@ jobs:
       - name: Build proot
         run: |
           cd proot-src
+          # 修补 loader 链接选项，移除 --rosegment（ubuntu 24.04 arm 原生 ld 不支持）
+          sed -i 's/,--rosegment,//' src/GNUmakefile
+          # 构建 proot
           make -C src proot GIT=false \
             PYTHON_CONFIG=/bin/false \
             HAS_PYTHON_CONFIG=""

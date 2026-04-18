@@ -10,7 +10,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout this repository
@@ -47,41 +47,46 @@ jobs:
           echo "Version ${{ steps.check-release.outputs.tag }} already released. Skipping."
           exit 78
 
-      - name: Install ARM64 cross-compile toolchain
+      - name: Build Docker cross-compile environment
         run: |
-          sudo dpkg --add-architecture arm64
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            gcc-aarch64-linux-gnu \
-            libc6-dev-arm64-cross \
-            libtalloc-dev:arm64 \
-            libarchive-dev:arm64 \
-            pkg-config-aarch64-linux-gnu
+          cat > Dockerfile.cross << 'EOF'
+          FROM ubuntu:20.04
+          ENV DEBIAN_FRONTEND=noninteractive
+          RUN dpkg --add-architecture arm64 && \
+              apt-get update && \
+              apt-get install -y --no-install-recommends \
+              gcc-10-aarch64-linux-gnu \
+              g++-10-aarch64-linux-gnu \
+              libc6-dev-arm64-cross \
+              libtalloc-dev:arm64 \
+              libarchive-dev:arm64 \
+              make \
+              git && \
+              rm -rf /var/lib/apt/lists/*
+          EOF
+          docker build -t proot-cross:latest - < Dockerfile.cross
 
       - name: Build proot
         run: |
-          cd proot-src
-          make -C src proot GIT=false \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            LDFLAGS="-static" \
-            CC=aarch64-linux-gnu-gcc
+          docker run --rm \
+            -v "$PWD/proot-src:/workdir/proot-src" \
+            -w /workdir/proot-src \
+            proot-cross:latest \
+            bash -c '
+              make -C src proot GIT=false \
+                CROSS_COMPILE=aarch64-linux-gnu- \
+                LDFLAGS="-static" \
+                CC=aarch64-linux-gnu-gcc-10
+            '
 
       - name: Package
         run: |
           mkdir -p dist
-
-          # Copy binary from src directory
           cp proot-src/src/proot dist/proot-${{ steps.clone.outputs.version }}-arm64-linux-glibc
-
-          # Show binary info
           file dist/proot-*
-
-          # Create tarball
-          cd dist
-          tar -czf proot-${{ steps.clone.outputs.version }}-arm64-linux-glibc.tar.gz proot-${{ steps.clone.outputs.version }}-arm64-linux-glibc
-
-          # Show info
-          ls -lh
+          tar -czf dist/proot-${{ steps.clone.outputs.version }}-arm64-linux-glibc.tar.gz \
+            -C dist proot-${{ steps.clone.outputs.version }}-arm64-linux-glibc
+          ls -lh dist/
 
       - name: Create Release
         if: steps.check-release.outputs.exists == 'false'

@@ -80,6 +80,7 @@ jobs:
           # Now compile talloc.c with generated config.h
           gcc -c -fPIC talloc.c -o talloc.o \
             -DHAVE_CONFIG_H \
+            -D__STDC_WANT_LIB_EXT1__=1 \
             -I. \
             -Ilib/replace \
             -Ilib/ccan \

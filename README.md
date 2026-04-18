@@ -9,7 +9,7 @@
 - 完整验证报告：架构、加固、链接方式、系统调用兼容性
 - 自动发布到 GitHub Releases
 
-## 下载预编译版本
+## 下载编译版本
 
 前往 [Releases](https://github.com/zbaku/proot-ci/releases) 页面下载最新版本。
 

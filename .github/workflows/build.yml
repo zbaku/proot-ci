@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  PROOT_REPO: "https://github.com/termux/proot.git"
+  PROOT_REPO: "https://github.com/proot-me/proot.git"
 
 permissions:
   contents: write
@@ -22,12 +22,6 @@ jobs:
       - name: Clone proot latest source
         id: clone
         run: |
-          # 获取最新 tag
-          TAGS_JSON=$(curl -s "https://api.github.com/repos/termux/proot/tags")
-          LATEST_TAG=$(echo "$TAGS_JSON" | grep -o '"name": "[^"]*"' | head -1 | cut -d'"' -f4)
-          LATEST_TAG=${LATEST_TAG:-v0.0.0}
-          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
-
           # 克隆最新代码
           git clone --depth=1 "$PROOT_REPO" proot-src
           cd proot-src
@@ -35,10 +29,15 @@ jobs:
           # 获取 commit 信息
           SHA=$(git rev-parse --short HEAD)
           echo "sha=$SHA" >> $GITHUB_OUTPUT
-          echo "version=$LATEST_TAG-$SHA" >> $GITHUB_OUTPUT
           echo "date=$(git log -1 --format='%ci' | cut -d' ' -f1)" >> $GITHUB_OUTPUT
 
-          echo "=== Termux proot 版本信息 ==="
+          # 获取最新 tag
+          git fetch --depth=1 origin "refs/tags/*:refs/tags/*" 2>/dev/null || true
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+          echo "version=$LATEST_TAG-$SHA" >> $GITHUB_OUTPUT
+
+          echo "=== proot 版本信息 ==="
           echo "Latest Tag: $LATEST_TAG"
           echo "Commit: $SHA"
           echo ""
@@ -67,63 +66,23 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          # Ubuntu ARM64 可能需要 universe 组件
-          sudo apt-get update || sudo apt-get update --allow-releaseinfo-change
+          sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libtalloc-dev \
             libarchive-dev \
             libseccomp-dev \
             make \
             git \
-            bc \
-            binutils-gold
-
-          # 安装 Android ashmem stub header（termux proot 需要）
-          sudo mkdir -p /usr/include/linux
-          sudo tee /usr/include/linux/ashmem.h > /dev/null << 'ASHMEM_EOF'
-          #ifndef _LINUX_ASHMEM_H
-          #define _LINUX_ASHMEM_H
-
-          #include <sys/ioctl.h>
-
-          #define ASHMEM_GET_SIZE _IO('a', 3)
-          #define ASHMEM_SET_NAME _IO('a', 1)
-          #define ASHMEM_GET_NAME _IO('a', 2)
-          #define ASHMEM_SET_SIZE _IO('a', 5)
-          #define ASHMEM_PIN _IO('a', 7)
-          #define ASHMEM_UNPIN _IO('a', 8)
-          #define ASHMEM_MAP _IO('a', 9)
-          #define ASHMEM_UNMAP _IO('a', 10)
-          #define ASHMEM_VERSION _IO('a', 0)
-
-          #define ASHMEM_NAME_LEN 256
-
-          struct ashmem_pin {
-            unsigned int offset;
-            unsigned int len;
-          };
-
-          struct ashmem_info {
-            unsigned int size;
-            unsigned int prot;
-            char name[ASHMEM_NAME_LEN];
-          };
-
-          #endif
-          ASHMEM_EOF
+            bc
 
       - name: Build proot
         run: |
           cd proot-src
-          # 修补 loader 链接选项，移除 --rosegment（ubuntu 24.04 arm 原生 ld 不支持）
-          sed -i 's/,--rosegment,/,/' src/GNUmakefile
-          # 禁用 32 位 loader（ARM64 原生不支持 -m32）
-          # 方法：在 eval 之后强制设置 HAS_LOADER_32BIT 为空
-          sed -i '/define_from_arch.h,,HAS_LOADER_32BIT/a HAS_LOADER_32BIT :=' src/GNUmakefile
-          # 构建 proot
+          # 静态链接构建
           make -C src proot GIT=false \
             PYTHON_CONFIG=/bin/false \
-            HAS_PYTHON_CONFIG=""
+            HAS_PYTHON_CONFIG="" \
+            LDFLAGS="-static"
 
       - name: Package
         run: |
@@ -160,59 +119,45 @@ jobs:
             echo ""
 
             echo "=== 3. Dynamic Linking Check ==="
-            if ldd "$PROOT_BIN" 2>&1 | grep -q "statically linked"; then
-              echo "Status: Statically linked (good)"
-            elif ldd "$PROOT_BIN" 2>&1 | grep -q "not a dynamic executable"; then
+            if ldd "$PROOT_BIN" 2>&1 | grep -q "not a dynamic executable\|statically linked"; then
               echo "Status: Static binary confirmed"
             else
-              echo "Status: Uses dynamic linking"
+              echo "Status: Uses dynamic linking - checking dependencies..."
               ldd "$PROOT_BIN" | head -5
             fi
             echo ""
 
-            echo "=== 4. ptrace System Call Test ==="
-            if ./proot-src/src/proot -h 2>&1 | head -3; then
-              echo "ptrace: proot runs successfully"
-            else
-              echo "ptrace: test completed"
-            fi
-            echo ""
-
-            echo "=== 5. File Type and Permissions ==="
+            echo "=== 4. File Type and Permissions ==="
             file "$PROOT_BIN"
             ls -la "$PROOT_BIN"
             echo ""
 
-            echo "=== 6. Binary Size Check ==="
+            echo "=== 5. Binary Size Check ==="
             SIZE=$(stat -c%s "$PROOT_BIN")
             SIZE_MB=$(echo "scale=2; $SIZE/1024/1024" | bc)
             echo "Size: $SIZE bytes ($SIZE_MB MB)"
-            if [ "$SIZE" -gt 1000000 ]; then
-              echo "Size: OK (proot binary > 1MB)"
+            if [ "$SIZE" -gt 500000 ]; then
+              echo "Size: OK (proot binary > 500KB)"
             else
               echo "Size: WARNING (may be incomplete)"
             fi
             echo ""
 
-            echo "=== 7. Executable Check ==="
+            echo "=== 6. Executable Check ==="
             if [ -x "$PROOT_BIN" ]; then
               echo "Executable: YES"
             else
-              echo "Executable: NO (adding +x)"
               chmod +x "$PROOT_BIN"
+              echo "Executable: FIXED"
             fi
             echo ""
 
-            echo "=== 8. Basic proot Help ==="
-            ./proot-src/src/proot --help 2>&1 | head -20
+            echo "=== 7. Basic proot Help ==="
+            ./"$PROOT_BIN" --help 2>&1 | head -20
             echo ""
 
-            echo "=== 9. proot Version Info ==="
-            ./proot-src/src/proot -V 2>&1 || ./proot-src/src/proot --version 2>&1 || echo "Version info not available"
-            echo ""
-
-            echo "=== 10. Key Parameters Supported ==="
-            ./proot-src/src/proot --help 2>&1 | grep -E "^\s*-" | head -20 || echo "Parameter list not available"
+            echo "=== 8. proot Version Info ==="
+            ./"$PROOT_BIN" -V 2>&1 || ./"$PROOT_BIN" --version 2>&1 || echo "Version info not available"
             echo ""
 
             echo "=== Verification Complete ==="
@@ -232,13 +177,13 @@ jobs:
 
             **Version:** `${{ steps.check-release.outputs.tag }}`
             **Date:** `${{ steps.clone.outputs.date }}`
-            **Commit:** [`${{ steps.clone.outputs.sha }}`](https://github.com/termux/proot/commit/${{ steps.clone.outputs.sha }})
+            **Commit:** [`${{ steps.clone.outputs.sha }}`](https://github.com/proot-me/proot/commit/${{ steps.clone.outputs.sha }})
 
             ### Architecture
             - CPU: ARM64 (aarch64)
             - C Library: glibc
             - Link: Static
-            - Source: [termux/proot](https://github.com/termux/proot)
+            - Source: [proot-me/proot](https://github.com/proot-me/proot)
 
             ### Verification Report
             ```

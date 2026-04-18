@@ -97,8 +97,31 @@ jobs:
             libtalloc-dev:arm64 \
             libarchive-dev:arm64 \
             libseccomp-dev:arm64 \
+            linux-libc-dev-arm64-cross \
             make \
             git
+
+          # Install Android ashmem header for termux proot
+          sudo mkdir -p /usr/aarch64-linux-gnu/include/linux
+          curl -sL "https://raw.githubusercontent.com/zsquix/termux-kernel-headers/master/linux/ashmem.h" \
+            -o /tmp/ashmem.h 2>/dev/null || \
+          curl -sL "https://raw.githubusercontent.com/android-rpi/kernel_stuff/master/ashmem.h" \
+            -o /tmp/ashmem.h 2>/dev/null || \
+          cat > /tmp/ashmem.h << 'ASHMEM_EOF'
+          #ifndef _LINUX_ASHMEM_H
+          #define _LINUX_ASHMEM_H
+          #define ASHMEM_GET_SIZE _IO('a', 3)
+          #define ASHMEM_SET_NAME _IO('a', 1)
+          #define ASHMEM_GET_NAME _IO('a', 2)
+          #define ASHMEM_SET_SIZE _IO('a', 5)
+          #define ASHMEM_PIN _IO('a', 7)
+          #define ASHMEM_UNPIN _IO('a', 8)
+          #define ASHMEM_MAP _IO('a', 9)
+          #define ASHMEM_UNMAP _IO('a', 10)
+          #define ASHMEM_VERSION _IO('a', 0)
+          #endif
+          ASHMEM_EOF
+          sudo cp /tmp/ashmem.h /usr/aarch64-linux-gnu/include/linux/
 
       - name: Build proot
         run: |

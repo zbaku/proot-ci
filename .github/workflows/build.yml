@@ -47,25 +47,35 @@ jobs:
           echo "Version ${{ steps.check-release.outputs.tag }} already released. Skipping."
           exit 78
 
-      - name: Download ARM64 cross-compile toolchain
+      - name: Fix apt sources and install ARM64 toolchain
         run: |
-          # Download ARM GNU Toolchain from ARM official site
-          wget -q https://developer.arm.com/-/media/Files/downloads/gnu/13.3.rel1/binrel/arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz
-          tar -xf arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -C /opt
-          echo "/opt/arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-linux-gnu/bin" >> $GITHUB_PATH
+          # Use official Ubuntu archives instead of Azure mirror
+          sudo sed -i 's|http://azure.archive.ubuntu.com|https://archive.ubuntu.com|g' /etc/apt/sources.list
+          sudo sed -i 's|http://security.ubuntu.com|https://security.ubuntu.com|g' /etc/apt/sources.list
 
-      - name: Install dependencies
-        run: |
+          # Add arm64 architecture
+          sudo dpkg --add-architecture arm64
+
+          # Update with fixed sources
           sudo apt-get update
+
+          # Install ARM64 cross-compile toolchain and libraries
           sudo apt-get install -y --no-install-recommends \
-            libtalloc-dev libarchive-dev make git pkg-config
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            libc6-dev-arm64-cross \
+            libtalloc-dev:arm64 \
+            libarchive-dev:arm64 \
+            libseccomp-dev:arm64 \
+            make \
+            git \
+            pkg-config
 
       - name: Build proot
         env:
           CROSS_COMPILE: aarch64-linux-gnu-
-          CC: aarch64-linux-gnu-gcc
         run: |
-          export PATH="/opt/arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-linux-gnu/bin:$PATH"
+          export PATH="/usr/aarch64-linux-gnu/bin:$PATH"
           cd proot-src
           make -C src proot GIT=false \
             CROSS_COMPILE=aarch64-linux-gnu- \

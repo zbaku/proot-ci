@@ -22,20 +22,21 @@ jobs:
       - name: Clone proot latest source
         id: clone
         run: |
-          git clone --depth=1 "$PROOT_REPO" proot-src
+          # 克隆最新代码
+          git clone "$PROOT_REPO" proot-src
           cd proot-src
-
-          # Termux proot 使用 v2.x.x 版本格式
-          # 获取最新 tag
-          git fetch --depth=1 origin "refs/tags/*:refs/tags/*" 2>/dev/null
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
 
           # 获取 commit 信息
           SHA=$(git rev-parse --short HEAD)
           echo "sha=$SHA" >> $GITHUB_OUTPUT
-          echo "version=$LATEST_TAG-$SHA" >> $GITHUB_OUTPUT
           echo "date=$(git log -1 --format='%ci' | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+
+          # 获取最新 tag（通过 GitHub API）
+          TAGS_JSON=$(curl -s "https://api.github.com/repos/termux/proot/tags")
+          LATEST_TAG=$(echo "$TAGS_JSON" | grep -o '"name": "[^"]*"' | head -1 | cut -d'"' -f4)
+          LATEST_TAG=${LATEST_TAG:-v0.0.0}
+          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+          echo "version=$LATEST_TAG-$SHA" >> $GITHUB_OUTPUT
 
           echo "=== Termux proot 版本信息 ==="
           echo "Latest Tag: $LATEST_TAG"

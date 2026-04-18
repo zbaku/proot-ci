@@ -16,7 +16,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check termux/proot updates
+        id: check_upstream
+        run: |
+          # Fetch latest termux/proot commit
+          git fetch --depth=1 origin main
+          LATEST_SHA=$(git rev-parse --short origin/main)
+          echo "latest_sha=$LATEST_SHA" >> $GITHUB_OUTPUT
+          echo "Fetching termux/proot latest: $LATEST_SHA"
+
+          # Read last built SHA from file
+          LAST_SHA=""
+          if [ -f last_build_sha ]; then
+            LAST_SHA=$(cat last_build_sha)
+            echo "Last built: $LAST_SHA"
+          else
+            echo "No previous build found"
+          fi
+
+          # Check if we need to rebuild
+          if [ "$LATEST_SHA" = "$LAST_SHA" ]; then
+            echo "No updates detected, skipping build"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "Updates detected: $LAST_SHA -> $LATEST_SHA"
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "$LATEST_SHA" > last_build_sha
+          fi
+
       - name: Clone proot
+        if: steps.check_upstream.outputs.skip == 'false'
         id: clone
         run: |
           git clone --depth=1 "$PROOT_REPO" proot-src
@@ -28,6 +57,7 @@ jobs:
           echo "version=$LATEST_TAG-$SHA" >> $GITHUB_OUTPUT
 
       - name: Check release
+        if: steps.check_upstream.outputs.skip == 'false'
         id: check
         run: |
           TAG="${{ steps.clone.outputs.version }}"
@@ -37,7 +67,11 @@ jobs:
           [ "$RESP" = "200" ] && echo "exists=true" >> $GITHUB_OUTPUT || echo "exists=false" >> $GITHUB_OUTPUT
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
-      - if: steps.check.outputs.exists == 'true'
+      - if: steps.check_upstream.outputs.skip == 'true'
+        run: |
+          echo "=== No updates, build skipped ==="
+
+      - if: steps.check_upstream.outputs.skip == 'false' && steps.check.outputs.exists == 'true'
         run: exit 78
 
       - name: Install deps

@@ -84,6 +84,8 @@ jobs:
           #ifndef _LINUX_ASHMEM_H
           #define _LINUX_ASHMEM_H
 
+          #include <sys/ioctl.h>
+
           #define ASHMEM_GET_SIZE _IO('a', 3)
           #define ASHMEM_SET_NAME _IO('a', 1)
           #define ASHMEM_GET_NAME _IO('a', 2)

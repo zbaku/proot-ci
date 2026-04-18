@@ -36,7 +36,7 @@ jobs:
           RESP=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/${TAG}")
-          [ "$RESP" = "200" ] && echo "exists=true" || echo "exists=false"
+          [ "$RESP" = "200" ] && echo "exists=true" >> $GITHUB_OUTPUT || echo "exists=false" >> $GITHUB_OUTPUT
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
       - if: steps.check.outputs.exists == 'true'

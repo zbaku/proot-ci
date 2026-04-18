@@ -49,10 +49,10 @@ jobs:
 
       - name: Download ARM64 cross-compile toolchain
         run: |
-          # Download Linaro ARM64 toolchain (gcc-linaro-11.3.1)
-          wget -q https://releases.linaro.org/components/toolchain/binaries/11.3-2022.03/aarch64-linux-gnu/gcc-linaro-11.3.1-2022.03-x86_64_aarch64-linux-gnu.tar.xz
-          tar -xf gcc-linaro-11.3.1-2022.03-x86_64_aarch64-linux-gnu.tar.xz -C /opt
-          echo "/opt/gcc-linaro-11.3.1-2022.03-x86_64_aarch64-linux-gnu/bin" >> $GITHUB_PATH
+          # Download ARM GNU Toolchain from ARM official site
+          wget -q https://developer.arm.com/-/media/Files/downloads/gnu/13.3.rel1/binrel/arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz
+          tar -xf arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -C /opt
+          echo "/opt/arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-linux-gnu/bin" >> $GITHUB_PATH
 
       - name: Install dependencies
         run: |

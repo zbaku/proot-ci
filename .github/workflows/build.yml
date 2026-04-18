@@ -1,0 +1,116 @@
+name: Build proot ARM64 Static
+
+on:
+  schedule:
+    - cron: '0 0 */15 * *'  # Every 15 days
+  workflow_dispatch:         # Manual trigger
+
+env:
+  PROOT_REPO: "https://github.com/proot-me/proot.git"
+  ARTIFACT_NAME: "proot-arm64-glibc"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v4
+
+      - name: Clone proot latest source
+        id: clone
+        run: |
+          git clone "$PROOT_REPO" proot-src
+          cd proot-src
+          echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "version=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "date=$(git log -1 --format='%ci' | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+
+      - name: Check if version already released
+        id: check-release
+        run: |
+          TAG="v0.0.0-${{ steps.clone.outputs.version }}"
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${TAG}")
+
+          if [ "$RESPONSE" = "200" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Skip if already released
+        if: steps.check-release.outputs.exists == 'true'
+        run: |
+          echo "Version ${{ steps.check-release.outputs.tag }} already released. Skipping."
+          exit 78  # Custom exit code to skip job
+
+      - name: Install cross-compile toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            libc6-dev-arm64-cross \
+            pkg-config-aarch64-linux-gnu \
+            ninja-build \
+            meson
+
+      - name: Build with Meson
+        run: |
+          meson setup proot-build \
+            proot-src \
+            --cross-file meson/cross-aarch64.txt \
+            --prefix=/usr \
+            -Dstatic=true
+
+          meson compile -C proot-build
+
+      - name: Package
+        run: |
+          mkdir -p dist
+
+          # Install to temp directory for packaging
+          meson install -C proot-build --destdir=install-root
+
+          # Create tarball with proper structure
+          cd install-root
+          tar -czf ../dist/proot-${{ steps.clone.outputs.version }}-arm64-linux-glibc.tar.gz .
+
+          # Strip binary to reduce size
+          aarch64-linux-gnu-strip ../dist/proot-*
+
+          cd ../dist
+          ls -lh
+
+      - name: Create Release
+        if: steps.check-release.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.check-release.outputs.tag }}
+          name: "proot ${{ steps.check-release.outputs.tag }}"
+          body: |
+            ## proot ARM64 Static Build
+
+            **Version:** `${{ steps.check-release.outputs.tag }}`
+            **Date:** `${{ steps.clone.outputs.date }}`
+            **Commit:** [`${{ steps.clone.outputs.version }}`](https://github.com/proot-me/proot/commit/${{ steps.clone.outputs.sha }})
+
+            ### Architecture
+            - CPU: ARM64 (aarch64)
+            - C Library: glibc
+            - Link: Static
+
+            ### Usage
+            ```bash
+            tar -xzf proot-${{ steps.clone.outputs.version }}-arm64-linux-glibc.tar.gz
+            ./proot -h
+            ```
+          files: dist/proot-*.tar.gz
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

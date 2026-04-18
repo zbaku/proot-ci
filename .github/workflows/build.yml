@@ -77,6 +77,38 @@ jobs:
             git \
             bc
 
+          # 安装 Android ashmem stub header（termux proot 需要）
+          sudo mkdir -p /usr/include/linux
+          sudo tee /usr/include/linux/ashmem.h > /dev/null << 'ASHMEM_EOF'
+          #ifndef _LINUX_ASHMEM_H
+          #define _LINUX_ASHMEM_H
+
+          #define ASHMEM_GET_SIZE _IO('a', 3)
+          #define ASHMEM_SET_NAME _IO('a', 1)
+          #define ASHMEM_GET_NAME _IO('a', 2)
+          #define ASHMEM_SET_SIZE _IO('a', 5)
+          #define ASHMEM_PIN _IO('a', 7)
+          #define ASHMEM_UNPIN _IO('a', 8)
+          #define ASHMEM_MAP _IO('a', 9)
+          #define ASHMEM_UNMAP _IO('a', 10)
+          #define ASHMEM_VERSION _IO('a', 0)
+
+          #define ASHMEM_NAME_LEN 256
+
+          struct ashmem_pin {
+            unsigned int offset;
+            unsigned int len;
+          };
+
+          struct ashmem_info {
+            unsigned int size;
+            unsigned int prot;
+            char name[ASHMEM_NAME_LEN];
+          };
+
+          #endif
+          ASHMEM_EOF
+
       - name: Build proot
         run: |
           cd proot-src

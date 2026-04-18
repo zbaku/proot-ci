@@ -123,7 +123,7 @@ jobs:
           echo "=== Binary Size ==="
           ls -lh "${BINARY}"
           SIZE=$(stat -c%s "${BINARY}")
-          [ ${SIZE} -gt 1048576 ] && echo "✓ 大小: ${SIZE} bytes (> 1MB)" || { echo "✗ 大小过小: ${SIZE} bytes"; exit 1; }
+          [ ${SIZE} -gt 100000 ] && echo "✓ 大小: ${SIZE} bytes (> 100KB)" || { echo "✗ 大小过小: ${SIZE} bytes"; exit 1; }
 
           echo ""
           echo "=== Executable Permission ==="

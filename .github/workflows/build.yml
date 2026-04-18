@@ -68,7 +68,6 @@ jobs:
           sudo apt-get update
 
           # Install ARM64 cross-compile toolchain
-          # Note: NOT installing swig to skip Python extension build
           sudo apt-get install -y --no-install-recommends \
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu \
@@ -76,6 +75,7 @@ jobs:
             libtalloc-dev:arm64 \
             libarchive-dev:arm64 \
             libseccomp-dev:arm64 \
+            python3-dev:arm64 \
             make \
             git
 

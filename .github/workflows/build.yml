@@ -3,7 +3,7 @@ name: Build proot ARM64 Static
 on:
   schedule:
     - cron: '0 0 1 * *'  # First day of every month
-  workflow_dispatch:         # Manual trigger
+  workflow_dispatch:
 
 env:
   PROOT_REPO: "https://github.com/proot-me/proot.git"
@@ -47,19 +47,27 @@ jobs:
           echo "Version ${{ steps.check-release.outputs.tag }} already released. Skipping."
           exit 78
 
-      - name: Fix apt sources and install ARM64 toolchain
+      - name: Setup ARM64 cross-compile environment
         run: |
-          # Use official Ubuntu archives instead of Azure mirror
-          sudo sed -i 's|http://azure.archive.ubuntu.com|https://archive.ubuntu.com|g' /etc/apt/sources.list
-          sudo sed -i 's|http://security.ubuntu.com|https://security.ubuntu.com|g' /etc/apt/sources.list
+          # Use Ubuntu ports for ARM64 packages
+          sudo rm -f /etc/apt/sources.list
+          cat > /tmp/sources.list << 'EOF'
+          deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse
+          deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ jammy-updates main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy-updates main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy-security main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy-backports main restricted universe multiverse
+          EOF
+          sudo cp /tmp/sources.list /etc/apt/sources.list
 
           # Add arm64 architecture
           sudo dpkg --add-architecture arm64
 
-          # Update with fixed sources
+          # Update
           sudo apt-get update
 
-          # Install ARM64 cross-compile toolchain and libraries
+          # Install ARM64 cross-compile toolchain
           sudo apt-get install -y --no-install-recommends \
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu \
@@ -68,14 +76,10 @@ jobs:
             libarchive-dev:arm64 \
             libseccomp-dev:arm64 \
             make \
-            git \
-            pkg-config
+            git
 
       - name: Build proot
-        env:
-          CROSS_COMPILE: aarch64-linux-gnu-
         run: |
-          export PATH="/usr/aarch64-linux-gnu/bin:$PATH"
           cd proot-src
           make -C src proot GIT=false \
             CROSS_COMPILE=aarch64-linux-gnu- \

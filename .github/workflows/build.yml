@@ -11,8 +11,6 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Use ARM64 runner for native compilation
-    # Note: GitHub does not provide hosted ARM64 runners, so we use cross-compilation via Docker
 
     steps:
       - name: Checkout this repository
@@ -49,22 +47,39 @@ jobs:
           echo "Version ${{ steps.check-release.outputs.tag }} already released. Skipping."
           exit 78
 
-      - name: Build proot using QEMU multiarch
+      - name: Install Miniconda
         run: |
-          # Use multiarch Docker image for ARM64 compilation
-          docker run --rm --privileged \
-            -v "$PWD/proot-src:/workdir/proot-src" \
-            -w /workdir/proot-src \
-            multiarch/qemu-user-static:arm64 \
-            bash -c '
-              apt-get update && apt-get install -y \
-                gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
-                libtalloc-dev libarchive-dev make git && \
-              make -C src proot GIT=false \
-                CROSS_COMPILE=aarch64-linux-gnu- \
-                LDFLAGS="-static" \
-                CC=aarch64-linux-gnu-gcc
-            '
+          wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh
+          bash /tmp/miniconda.sh -b -p /opt/conda
+          source /opt/conda/etc/profile.d/conda.sh
+
+      - name: Install ARM64 cross-compile toolchain via conda
+        run: |
+          source /opt/conda/etc/profile.d/conda.sh
+          conda create -y -n proot-build \
+            -c conda-forge \
+            gcc_linux-aarch64 \
+            libcblas \
+            libarchive \
+            make \
+            pkg-config
+          conda activate proot-build
+
+      - name: Build proot
+        env:
+          CC: aarch64-linux-gnu-gcc
+          CXX: aarch64-linux-gnu-g++
+          AR: aarch64-linux-gnu-ar
+          LD: aarch64-linux-gnu-ld
+          PKG_CONFIG_PATH: /opt/conda/envs/proot-build/aarch64-linux-gnu/lib/pkgconfig
+        run: |
+          source /opt/conda/etc/profile.d/conda.sh
+          conda activate proot-build
+          cd proot-src
+          make -C src proot GIT=false \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            LDFLAGS="-static" \
+            CC=aarch64-linux-gnu-gcc
 
       - name: Package
         run: |

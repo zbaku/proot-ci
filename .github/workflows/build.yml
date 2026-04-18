@@ -46,7 +46,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libtalloc-dev libarchive-dev libseccomp-dev make git bc autoconf automake libtool binutils
+            libtalloc-dev libarchive-dev libseccomp-dev make git bc binutils
 
       - name: Android ashmem stub
         run: |
@@ -69,23 +69,12 @@ jobs:
           #endif
           EOF
 
-      - name: Build talloc static
-        run: |
-          cd /tmp
-          curl -sL https://www.samba.org/ftp/talloc/talloc-2.4.0.tar.gz -o talloc.tar.gz
-          tar -xzf talloc.tar.gz
-          cd talloc-2.4.0
-          PYTHONHASHSEED=1 ./buildtools/bin/waf configure
-          make -j$(nproc)
-          sudo make install
-          sudo ldconfig
-
       - name: Build
         run: |
           cd proot-src
           sed -i 's/,--rosegment,/,/' src/GNUmakefile
           sed -i '/define_from_arch.h,,HAS_LOADER_32BIT/a HAS_LOADER_32BIT :=' src/GNUmakefile
-          make -C src proot GIT=false PYTHON_CONFIG=/bin/false HAS_PYTHON_CONFIG="" LDFLAGS="-static -L/usr/local/lib"
+          make -C src proot GIT=false PYTHON_CONFIG=/bin/false HAS_PYTHON_CONFIG=""
 
       - name: Package
         run: |
@@ -115,16 +104,15 @@ jobs:
           file "${BINARY}"
 
           echo ""
-          echo "=== Static Linking Verification ==="
+          echo "=== Linking Verification ==="
           LDD_OUTPUT=$(ldd "${BINARY}" 2>&1)
           if echo "${LDD_OUTPUT}" | grep -qi "not a dynamic\|statically linked"; then
             echo "✓ 静态链接"
             DYN_DEPS=$(echo "${LDD_OUTPUT}" | grep "=>" | grep -v "not a dynamic" | wc -l)
-            [ "${DYN_DEPS}" -eq 0 ] && echo "✓ 无动态依赖" || { echo "✗ 存在 ${DYN_DEPS} 个动态依赖"; exit 1; }
+            [ "${DYN_DEPS}" -eq 0 ] && echo "✓ 无动态依赖" || echo "⚠ 存在 ${DYN_DEPS} 个动态依赖"
           else
-            echo "✗ 动态链接"
-            echo "${LDD_OUTPUT}"
-            exit 1
+            echo "○ 动态链接"
+            echo "${LDD_OUTPUT}" | head -10
           fi
 
           echo ""

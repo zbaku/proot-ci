@@ -108,9 +108,9 @@ jobs:
           cd proot-src
           sed -i 's/,--rosegment,/,/' src/GNUmakefile
           sed -i '/define_from_arch.h,,HAS_LOADER_32BIT/a HAS_LOADER_32BIT :=' src/GNUmakefile
-          # Use -static with explicit library paths
+          # Static linking with explicit talloc
           make -C src proot GIT=false PYTHON_CONFIG=/bin/false HAS_PYTHON_CONFIG="" \
-            LDFLAGS="-static -L/usr/lib/aarch64-linux-gnu -L/usr/local/lib"
+            LDFLAGS="-static -L/usr/lib/aarch64-linux-gnu -L/usr/local/lib -ltalloc"
 
       - name: Package
         run: |

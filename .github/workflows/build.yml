@@ -5,6 +5,7 @@ on:
 
 env:
   PROOT_REPO: "https://github.com/termux/proot.git"
+  VERSION: "prootv5.1.0-glibc-arm64"
 
 permissions:
   contents: write
@@ -53,19 +54,17 @@ jobs:
           SHA=$(git rev-parse --short HEAD)
           echo "sha=$SHA" >> $GITHUB_OUTPUT
           echo "date=$(git log -1 --format='%ci' | cut -d' ' -f1)" >> $GITHUB_OUTPUT
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "version=$LATEST_TAG-$SHA" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Check release
         if: steps.check_upstream.outputs.skip == 'false'
         id: check
         run: |
-          TAG="${{ steps.clone.outputs.version }}"
           RESP=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${TAG}")
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$VERSION")
           [ "$RESP" = "200" ] && echo "exists=true" >> $GITHUB_OUTPUT || echo "exists=false" >> $GITHUB_OUTPUT
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "tag=$VERSION" >> $GITHUB_OUTPUT
 
       - if: steps.check_upstream.outputs.skip == 'true'
         run: |
@@ -202,9 +201,11 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.check.outputs.tag }}
+          tag_name: ${{ env.VERSION }}
           body: |
-            proot ARM64 build - ${{ steps.clone.outputs.version }}
+            proot ARM64 build
+
+            Source: termux/proot @${{ steps.clone.outputs.sha }} (${{ steps.clone.outputs.date }})
           files: dist/proot-*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -11,6 +11,8 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Use ARM64 runner for native compilation
+    # Note: GitHub does not provide hosted ARM64 runners, so we use cross-compilation via Docker
 
     steps:
       - name: Checkout this repository
@@ -47,36 +49,21 @@ jobs:
           echo "Version ${{ steps.check-release.outputs.tag }} already released. Skipping."
           exit 78
 
-      - name: Build Docker cross-compile environment
+      - name: Build proot using QEMU multiarch
         run: |
-          cat > Dockerfile.cross << 'EOF'
-          FROM ubuntu:20.04
-          ENV DEBIAN_FRONTEND=noninteractive
-          RUN dpkg --add-architecture arm64 && \
-              apt-get update && \
-              apt-get install -y --no-install-recommends \
-              gcc-10-aarch64-linux-gnu \
-              g++-10-aarch64-linux-gnu \
-              libc6-dev-arm64-cross \
-              libtalloc-dev:arm64 \
-              libarchive-dev:arm64 \
-              make \
-              git && \
-              rm -rf /var/lib/apt/lists/*
-          EOF
-          docker build -t proot-cross:latest - < Dockerfile.cross
-
-      - name: Build proot
-        run: |
-          docker run --rm \
+          # Use multiarch Docker image for ARM64 compilation
+          docker run --rm --privileged \
             -v "$PWD/proot-src:/workdir/proot-src" \
             -w /workdir/proot-src \
-            proot-cross:latest \
+            multiarch/qemu-user-static:arm64 \
             bash -c '
+              apt-get update && apt-get install -y \
+                gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
+                libtalloc-dev libarchive-dev make git && \
               make -C src proot GIT=false \
                 CROSS_COMPILE=aarch64-linux-gnu- \
                 LDFLAGS="-static" \
-                CC=aarch64-linux-gnu-gcc-10
+                CC=aarch64-linux-gnu-gcc
             '
 
       - name: Package

@@ -75,17 +75,19 @@ jobs:
             libtalloc-dev:arm64 \
             libarchive-dev:arm64 \
             libseccomp-dev:arm64 \
-            python3-dev:arm64 \
             make \
             git
 
       - name: Build proot
         run: |
           cd proot-src
+          # Disable Python extension by making python-config fail
           make -C src proot GIT=false \
             CROSS_COMPILE=aarch64-linux-gnu- \
             LDFLAGS="-static" \
-            CC=aarch64-linux-gnu-gcc
+            CC=aarch64-linux-gnu-gcc \
+            PYTHON_CONFIG=/bin/false \
+            HAS_PYTHON_CONFIG=""
 
       - name: Package
         run: |

@@ -8,6 +8,9 @@ on:
 env:
   PROOT_REPO: "https://github.com/proot-me/proot.git"
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-22.04

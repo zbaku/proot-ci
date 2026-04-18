@@ -75,15 +75,13 @@ jobs:
           curl -sL https://www.samba.org/ftp/talloc/talloc-2.4.0.tar.gz -o talloc.tar.gz
           tar -xzf talloc.tar.gz
           cd talloc-2.4.0
-          # Build only the static library using waf
-          PYTHONHASHSEED=1 ./buildtools/bin/waf configure --enable-static --disable-python
-          PYTHONHASHSEED=1 ./buildtools/bin/waf build
-          # The static library should be in bin/default/libtalloc.a
-          ls -la bin/default/libtalloc.a
-          sudo cp bin/default/libtalloc.a /usr/local/lib/
-          sudo cp bin/default/*.h /usr/local/include/ 2>/dev/null || true
+          # Compile talloc.c directly to static library
+          gcc -c -fPIC talloc.c -o talloc.o -DHAVE_CONFIG_H
+          ar rcs libtalloc.a talloc.o
+          sudo cp libtalloc.a /usr/local/lib/
           sudo cp talloc.h /usr/local/include/
           sudo ldconfig
+          ls -la /usr/local/lib/libtalloc.a
 
       - name: Build
         run: |

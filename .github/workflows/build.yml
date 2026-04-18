@@ -151,51 +151,63 @@ jobs:
             -C dist proot-${{ steps.clone.outputs.version }}-arm64-linux-glibc
 
       - name: Verify
+        id: verify
         run: |
           cd dist
           TARBALL=$(ls proot-*.tar.gz)
           BINARY="${TARBALL%.tar.gz}"
+          VERSION="${{ env.VERSION }}"
 
-          echo "=== Extract binary ==="
-          tar -xzf "${TARBALL}"
-          echo "✓ Extracted: ${BINARY}"
+          REPORT="verification-report-${VERSION}.txt"
+
+          {
+            echo "=========================================="
+            echo "  proot ARM64 验证报告"
+            echo "  版本: ${VERSION}"
+            echo "  日期: $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "=========================================="
+            echo ""
+            echo "--- ELF 架构 ---"
+            readelf -h "${BINARY}" | grep -E "Machine:|Class:|Type:"
+            MACHINE=$(readelf -h "${BINARY}" | grep Machine | awk '{print $2}')
+            [ "${MACHINE}" = "AArch64" ] && echo "✓ AArch64" || { echo "✗ 架构错误: ${MACHINE}"; exit 1; }
+            echo ""
+            echo "--- 文件类型 ---"
+            file "${BINARY}"
+            echo ""
+            echo "--- 链接方式 ---"
+            FILE_OUTPUT=$(file "${BINARY}")
+            if echo "${FILE_OUTPUT}" | grep -qi "statically linked"; then
+              echo "✓ 完全静态链接"
+            elif ldd "${BINARY}" 2>&1 | grep -q "not a dynamic"; then
+              echo "✓ 静态链接"
+            else
+              echo "○ 动态链接"
+            fi
+            echo ""
+            echo "--- 符号检查 ---"
+            nm "${BINARY}" 2>/dev/null | grep -q "talloc" && echo "✓ talloc 符号存在" || echo "⚠ talloc 符号未找到"
+            nm "${BINARY}" 2>/dev/null | grep -q "memfd_create" && echo "✓ memfd_create 符号存在" || echo "⚠ memfd_create 符号未找到"
+            echo ""
+            echo "--- 二进制大小 ---"
+            ls -lh "${BINARY}"
+            SIZE=$(stat -c%s "${BINARY}")
+            [ ${SIZE} -gt 100000 ] && echo "✓ ${SIZE} bytes (> 100KB)" || { echo "✗ 大小过小: ${SIZE} bytes"; exit 1; }
+            echo ""
+            echo "--- 权限检查 ---"
+            [ -x "${BINARY}" ] && echo "✓ 可执行权限正常" || { echo "✗ 缺少可执行权限"; exit 1; }
+            echo ""
+            echo "--- 上游信息 ---"
+            echo "Source: termux/proot @${{ steps.clone.outputs.sha }}"
+            echo "Date: ${{ steps.clone.outputs.date }}"
+            echo ""
+            echo "=========================================="
+            echo "  验证完成"
+            echo "=========================================="
+          } | tee "${REPORT}"
 
           echo ""
-          echo "=== ELF Architecture ==="
-          readelf -h "${BINARY}" | grep -E "Machine:|Class:|Type:"
-          MACHINE=$(readelf -h "${BINARY}" | grep Machine | awk '{print $2}')
-          [ "${MACHINE}" = "AArch64" ] && echo "✓ 架构: AArch64" || { echo "✗ 架构错误: ${MACHINE}"; exit 1; }
-
-          echo ""
-          echo "=== File Type ==="
-          file "${BINARY}"
-
-          echo ""
-          echo "=== Linking Verification ==="
-          FILE_OUTPUT=$(file "${BINARY}")
-          if echo "${FILE_OUTPUT}" | grep -qi "statically linked"; then
-            echo "✓ 完全静态链接"
-            echo "✓ 无动态依赖"
-          elif ldd "${BINARY}" 2>&1 | grep -q "not a dynamic"; then
-            echo "✓ 静态链接"
-          else
-            echo "○ 动态链接"
-            ldd "${BINARY}" | head -10
-          fi
-
-          echo ""
-          echo "=== Required Symbols ==="
-          nm "${BINARY}" 2>/dev/null | grep -q "talloc" && echo "✓ talloc 符号存在" || echo "⚠ talloc 符号未找到"
-
-          echo ""
-          echo "=== Binary Size ==="
-          ls -lh "${BINARY}"
-          SIZE=$(stat -c%s "${BINARY}")
-          [ ${SIZE} -gt 100000 ] && echo "✓ 大小: ${SIZE} bytes (> 100KB)" || { echo "✗ 大小过小: ${SIZE} bytes"; exit 1; }
-
-          echo ""
-          echo "=== Executable Permission ==="
-          [ -x "${BINARY}" ] && echo "✓ 可执行权限正常" || { echo "✗ 缺少可执行权限"; exit 1; }
+          echo "report_file=${REPORT}" >> $GITHUB_OUTPUT
 
       - name: Release
         if: steps.check.outputs.exists == 'false'
@@ -203,9 +215,24 @@ jobs:
         with:
           tag_name: ${{ env.VERSION }}
           body: |
-            proot ARM64 build
+            ## proot ARM64 构建
 
-            Source: termux/proot @${{ steps.clone.outputs.sha }} (${{ steps.clone.outputs.date }})
-          files: dist/proot-*.tar.gz
+            **版本:** ${{ env.VERSION }}
+            **上游:** termux/proot @${{ steps.clone.outputs.sha }} (${{ steps.clone.outputs.date }})
+
+            ---
+            ## 验证报告
+
+            ```
+            $(cat dist/${{ steps.verify.outputs.report_file }})
+            ```
+
+            ---
+            ## 变更内容
+
+            检测到 termux/proot 有新提交，自动构建并发布。
+          files: |
+            dist/proot-*.tar.gz
+            dist/${{ steps.verify.outputs.report_file }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

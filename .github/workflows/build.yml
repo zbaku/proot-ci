@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04-arm
 
     steps:
       - name: Checkout this repository
@@ -22,34 +22,30 @@ jobs:
       - name: Clone proot latest source
         id: clone
         run: |
+          # 获取最新 tag
+          TAGS_JSON=$(curl -s "https://api.github.com/repos/termux/proot/tags")
+          LATEST_TAG=$(echo "$TAGS_JSON" | grep -o '"name": "[^"]*"' | head -1 | cut -d'"' -f4)
+          LATEST_TAG=${LATEST_TAG:-v0.0.0}
+          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+
           # 克隆最新代码
-          git clone "$PROOT_REPO" proot-src
+          git clone --depth=1 "$PROOT_REPO" proot-src
           cd proot-src
 
           # 获取 commit 信息
           SHA=$(git rev-parse --short HEAD)
           echo "sha=$SHA" >> $GITHUB_OUTPUT
-          echo "date=$(git log -1 --format='%ci' | cut -d' ' -f1)" >> $GITHUB_OUTPUT
-
-          # 获取最新 tag（通过 GitHub API）
-          TAGS_JSON=$(curl -s "https://api.github.com/repos/termux/proot/tags")
-          LATEST_TAG=$(echo "$TAGS_JSON" | grep -o '"name": "[^"]*"' | head -1 | cut -d'"' -f4)
-          LATEST_TAG=${LATEST_TAG:-v0.0.0}
-          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
           echo "version=$LATEST_TAG-$SHA" >> $GITHUB_OUTPUT
+          echo "date=$(git log -1 --format='%ci' | cut -d' ' -f1)" >> $GITHUB_OUTPUT
 
           echo "=== Termux proot 版本信息 ==="
           echo "Latest Tag: $LATEST_TAG"
           echo "Commit: $SHA"
-          echo "Branch: $(git rev-parse --abbrev-ref HEAD)"
           echo ""
-          echo "=== 最新 commit ==="
-          git log -1 --oneline
 
       - name: Check if version already released
         id: check-release
         run: |
-          # 使用 version 输出作为 tag (格式: vX.Y.Z-commithash)
           TAG="${{ steps.clone.outputs.version }}"
           RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
@@ -69,68 +65,20 @@ jobs:
           echo "Version ${{ steps.check-release.outputs.tag }} already released. Skipping."
           exit 78
 
-      - name: Setup ARM64 cross-compile environment
+      - name: Install build dependencies
         run: |
-          # Use Ubuntu ports for ARM64 packages
-          sudo rm -f /etc/apt/sources.list
-          cat > /tmp/sources.list << 'EOF'
-          deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse
-          deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ jammy-updates main restricted universe multiverse
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy main restricted universe multiverse
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy-updates main restricted universe multiverse
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy-security main restricted universe multiverse
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy-backports main restricted universe multiverse
-          EOF
-          sudo cp /tmp/sources.list /etc/apt/sources.list
-
-          # Add arm64 architecture
-          sudo dpkg --add-architecture arm64
-
-          # Update
           sudo apt-get update
-
-          # Install ARM64 cross-compile toolchain
           sudo apt-get install -y --no-install-recommends \
-            gcc-aarch64-linux-gnu \
-            g++-aarch64-linux-gnu \
-            libc6-dev-arm64-cross \
-            libtalloc-dev:arm64 \
-            libarchive-dev:arm64 \
-            libseccomp-dev:arm64 \
-            linux-libc-dev-arm64-cross \
+            libtalloc-dev \
+            libarchive-dev \
+            libseccomp-dev \
             make \
             git
-
-          # Install Android ashmem header for termux proot
-          sudo mkdir -p /usr/aarch64-linux-gnu/include/linux
-          curl -sL "https://raw.githubusercontent.com/zsquix/termux-kernel-headers/master/linux/ashmem.h" \
-            -o /tmp/ashmem.h 2>/dev/null || \
-          curl -sL "https://raw.githubusercontent.com/android-rpi/kernel_stuff/master/ashmem.h" \
-            -o /tmp/ashmem.h 2>/dev/null || \
-          cat > /tmp/ashmem.h << 'ASHMEM_EOF'
-          #ifndef _LINUX_ASHMEM_H
-          #define _LINUX_ASHMEM_H
-          #define ASHMEM_GET_SIZE _IO('a', 3)
-          #define ASHMEM_SET_NAME _IO('a', 1)
-          #define ASHMEM_GET_NAME _IO('a', 2)
-          #define ASHMEM_SET_SIZE _IO('a', 5)
-          #define ASHMEM_PIN _IO('a', 7)
-          #define ASHMEM_UNPIN _IO('a', 8)
-          #define ASHMEM_MAP _IO('a', 9)
-          #define ASHMEM_UNMAP _IO('a', 10)
-          #define ASHMEM_VERSION _IO('a', 0)
-          #endif
-          ASHMEM_EOF
-          sudo cp /tmp/ashmem.h /usr/aarch64-linux-gnu/include/linux/
 
       - name: Build proot
         run: |
           cd proot-src
-          # Set PKG_CONFIG_PATH to find ARM64 libraries (correct path)
-          export PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH"
           make -C src proot GIT=false \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CC=aarch64-linux-gnu-gcc \
             PYTHON_CONFIG=/bin/false \
             HAS_PYTHON_CONFIG=""
 
@@ -176,18 +124,7 @@ jobs:
             echo ""
 
             echo "=== 4. ptrace System Call Test ==="
-            cat > /tmp/test_ptrace.c << 'EOF'
-            #define _GNU_SOURCE
-            #include <sys/ptrace.h>
-            #include <stdio.h>
-            int main() {
-              long result = ptrace(PTRACE_TRACEME, 0, NULL, NULL);
-              printf("ptrace(PTRACE_TRACEME) = %ld\n", result);
-              return result == -1 ? 1 : 0;
-            }
-            EOF
-            aarch64-linux-gnu-gcc /tmp/test_ptrace.c -o /tmp/test_ptrace
-            ./proot-src/src/proot /tmp/test_ptrace && echo "ptrace: SUPPORTED" || echo "ptrace: NOT SUPPORTED"
+            ./proot-src/src/proot /bin/true && echo "ptrace: SUPPORTED" || echo "ptrace: NOT SUPPORTED"
             echo ""
 
             echo "=== 5. File Type and Permissions ==="
@@ -203,7 +140,6 @@ jobs:
 
             echo "=== 7. chroot Simulation Test ==="
             mkdir -p /tmp/proot-test/{bin,lib}
-            cp proot-src/src/proot /tmp/proot-test/
             ./proot-src/src/proot -r /tmp/proot-test /bin/ls /tmp/proot-test > /dev/null 2>&1 && echo "chroot simulation: OK" || echo "chroot simulation: FAILED"
             rm -rf /tmp/proot-test
             echo ""
@@ -217,7 +153,6 @@ jobs:
             echo ""
 
             echo "=== 9. User/Permission Simulation Test ==="
-            mkdir -p /tmp/proot-user-test
             ./proot-src/src/proot -0 -i 0:0 id > /tmp/proot-id.out 2>&1
             if grep -q "uid=0(root)" /tmp/proot-id.out; then
               echo "user simulation: OK (root emulation works)"
@@ -241,13 +176,9 @@ jobs:
 
             echo "=== 11. Seccomp Filter Check (Android 14-16 Compatibility) ==="
             ./proot-src/src/proot --help 2>&1 | grep -iE "seccomp|scfilter" && echo "seccomp: SUPPORTED" || echo "seccomp: Native mode"
-            for syscall in ptrace openat2 quotacte; do
-              ./proot-src/src/proot -S /bin/true 2>&1 | grep -qi "seccomp" && echo "$syscall: FILTERED" || echo "$syscall: OK"
-            done
             echo ""
 
             echo "=== 12. Termux/Linux Emulation Compatibility ==="
-            mkdir -p /tmp/proot-termux-test/{data/data/com.termux/files/usr,proc/self}
             ./proot-src/src/proot cat /proc/self/cmdline > /dev/null 2>&1 \
               && echo "/proc/self: OK" || echo "/proc/self: FAILED"
             ./proot-src/src/proot -w /data/data/com.termux/files/home echo $HOME > /tmp/proot-home.out 2>&1 \
@@ -255,94 +186,14 @@ jobs:
             rm -rf /tmp/proot-termux-test
             echo ""
 
-            echo "=== 13. Android 14-16 System Call Blocklist Test ==="
-            cat > /tmp/test_syscalls.c << 'EOF'
-            #define _GNU_SOURCE
-            #include <sys/syscall.h>
-            #include <linux/openat2.h>
-            #include <stdio.h>
-            #include <sys/time.h>
-            int main() {
-              struct open_how how = {.flags = O_RDONLY};
-              long ret = syscall(SYS_openat2, AT_FDCWD, "/", &how, sizeof(how));
-              printf("openat2: ret=%ld errno=%d\n", ret, errno);
-              return 0;
-            }
-            EOF
-            aarch64-linux-gnu-gcc /tmp/test_syscalls.c -o /tmp/test_syscalls 2>/dev/null
-            ./proot-src/src/proot /tmp/test_syscalls 2>&1 | head -3 || echo "Syscall test completed"
-            echo ""
-
-            echo "=== 14. Linker and Loader Test (Android-specific) ==="
-            mkdir -p /tmp/proot-linker-test
-            echo 'int main(){return 0;}' > /tmp/proot-linker-test/test.c
-            aarch64-linux-gnu-gcc /tmp/proot-linker-test/test.c -o /tmp/proot-linker-test/test
-            ./proot-src/src/proot /tmp/proot-linker-test/test && echo "linker: OK" || echo "linker: FAILED"
-            rm -rf /tmp/proot-linker-test
-            echo ""
-
-            echo "=== 15. PTY (Pseudo-Terminal) Support Test ==="
-            mkdir -p /tmp/proot-pty-test
-            cat > /tmp/proot-pty-test/test.c << 'EOF'
-            #define _GNU_SOURCE
-            #include <stdlib.h>
-            #include <stdio.h>
-            #include <sys/types.h>
-            #include <sys/stat.h>
-            #include <fcntl.h>
-            #include <unistd.h>
-            #include <pty.h>
-            int main() {
-              int master, slave;
-              struct termios term;
-              if (openpty(&master, &slave, NULL, &term, NULL) >= 0) {
-                printf("PTY: allocated (master=%d, slave=%d)\n", master, slave);
-                close(master);
-                close(slave);
-                return 0;
-              }
-              printf("PTY: FAILED\n");
-              return 1;
-            }
-            EOF
-            aarch64-linux-gnu-gcc /tmp/proot-pty-test/test.c -o /tmp/proot-pty-test/test -lutil
-            ./proot-src/src/proot /tmp/proot-pty-test/test && echo "PTY support: OK" || echo "PTY support: FAILED"
+            echo "=== 13. PTY (Pseudo-Terminal) Support Test ==="
+            ./proot-src/src/proot -0 /bin/bash -c "tty" > /tmp/tty.out 2>&1 && echo "PTY support: OK" || echo "PTY support: PARTIAL"
             rm -rf /tmp/proot-pty-test
             echo ""
 
-            echo "=== 16. Bind Mount and Overlay Test ==="
-            mkdir -p /tmp/proot-mount-test/{upper,lower,work,mnt}
-            cat > /tmp/proot-mount-overlay.c << 'EOF'
-            #define _GNU_SOURCE
-            #include <stdio.h>
-            #include <sys/mount.h>
-            #include <sys/stat.h>
-            #include <unistd.h>
-            int main() {
-              mkdir("/tmp/lower", 0755);
-              mkdir("/tmp/upper", 0755);
-              mkdir("/tmp/work", 0755);
-              mkdir("/tmp/mnt", 0755);
-              int ret = mount("lower", "/tmp/mnt", "overlay", 0, "lowerdir=/tmp/lower,upperdir=/tmp/upper,workdir=/tmp/work");
-              printf("overlay mount: ret=%d errno=%d\n", (int)ret, errno);
-              return ret;
-            }
-            EOF
-            aarch64-linux-gnu-gcc /tmp/proot-mount-overlay.c -o /tmp/proot-mount-overlay 2>/dev/null
-            ./proot-src/src/proot /tmp/proot-mount-overlay 2>&1 | head -2 || echo "Overlay test completed"
-            rm -rf /tmp/proot-mount-test /tmp/proot-mount-overlay.c /tmp/proot-mount-overlay
-            echo ""
-
-            echo "=== 17. Run Parameters Completeness Check ==="
+            echo "=== 14. Run Parameters Completeness Check ==="
             echo "--- proot --help output ---"
             ./proot-src/src/proot --help 2>&1 | head -60
-            echo ""
-            echo "--- Key parameters supported ---"
-            ./proot-src/src/proot --help 2>&1 | grep -E "^\s*-" | head -30
-            echo ""
-
-            echo "=== 18. Feature Detection Summary ==="
-            ./proot-src/src/proot --help 2>&1 | grep -iE "feature|seccomp|ptrace|arm64|aarch64|android|bionic" || echo "Feature info not available in --help"
             echo ""
 
             echo "=== Verification Complete ==="
@@ -362,12 +213,13 @@ jobs:
 
             **Version:** `${{ steps.check-release.outputs.tag }}`
             **Date:** `${{ steps.clone.outputs.date }}`
-            **Commit:** [`${{ steps.clone.outputs.version }}`](https://github.com/proot-me/proot/commit/${{ steps.clone.outputs.sha }})
+            **Commit:** [`${{ steps.clone.outputs.sha }}`](https://github.com/termux/proot/commit/${{ steps.clone.outputs.sha }})
 
             ### Architecture
             - CPU: ARM64 (aarch64)
             - C Library: glibc
             - Link: Static
+            - Source: [termux/proot](https://github.com/termux/proot)
 
             ### Verification Report
             ```

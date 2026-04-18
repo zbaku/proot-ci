@@ -5,13 +5,13 @@
 ## 功能
 
 - 每 15 天自动检测上游 [proot-me/proot](https://github.com/proot-me/proot) 是否有新版本
-- 交叉编译生成 ARM64 (aarch64) 静态二进制
+- 使用 dockcross 交叉编译生成 ARM64 (aarch64) 静态二进制
 - 自动发布到 GitHub Releases
 - 支持手动触发构建
 
 ## 下载预编译版本
 
-前往 [Releases](https://github.com/proot-me/proot/releases) 页面下载最新版本。
+前往 [Releases](https://github.com/zbaku/proot-ci/releases) 页面下载最新版本。
 
 ## 版本命名
 
@@ -32,38 +32,50 @@
 | 架构 | ARM64 (aarch64) |
 | C 库 | glibc |
 | 链接方式 | 静态链接 |
-| 构建系统 | Meson + Ninja |
-| CI 平台 | GitHub Actions |
+| 构建系统 | GNU Makefile |
+| 交叉编译 | dockcross/linux-arm64 |
 
 ## 使用方法
 
 ```bash
 # 下载解压
-wget https://github.com/proot-me/proot/releases/download/v0.0.0-xxxxxxx/proot-v0.0.0-xxxxxxx-arm64-linux-glibc.tar.gz
+wget https://github.com/zbaku/proot-ci/releases/download/v0.0.0-xxxxxxx/proot-v0.0.0-xxxxxxx-arm64-linux-glibc.tar.gz
 tar -xzf proot-*.tar.gz
 
 # 运行
 ./proot -h
 ```
 
-## 本地构建
+## 本地构建（交叉编译 ARM64）
+
+### 使用 dockcross
+
+```bash
+# 克隆源码
+git clone https://github.com/proot-me/proot.git
+cd proot
+
+# 使用 dockcross 交叉编译
+docker run --rm -v "$PWD:/workdir" -w /workdir \
+  dockcross/linux-arm64 \
+  make -C src proot GIT=false \
+    CROSS_COMPILE=aarch64-linux-gnu- \
+    LDFLAGS="-static" \
+    CC=aarch64-linux-gnu-gcc
+```
+
+### 原生构建（x86_64 Linux）
 
 ```bash
 # 安装依赖
-sudo apt-get install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-  libc6-dev-arm64-cross pkg-config-aarch64-linux-gnu ninja-build meson
+sudo apt-get install build-essential libtalloc-dev libarchive-dev
 
 # 克隆源码
 git clone https://github.com/proot-me/proot.git
-
-# 配置编译
-meson setup proot-build proot --cross-file meson/cross-aarch64.txt -Dstatic=true
+cd proot
 
 # 编译
-meson compile -C proot-build
-
-# 安装
-meson install -C proot-build
+make -C src proot GIT=false LDFLAGS="-static"
 ```
 
 ## CI/CD 工作流
@@ -77,14 +89,21 @@ meson install -C proot-build
       是
        │
        ▼
-  检查是否已发布
+  使用 dockcross 交叉编译 ARM64 静态版
        │
        ▼
-  交叉编译 ARM64 静态版
+  检查是否已发布（避免重复）
        │
        ▼
   发布到 GitHub Releases
 ```
+
+## 交叉编译说明
+
+使用 [dockcross/linux-arm64](https://github.com/dockcross/dockcross) Docker 镜像进行交叉编译，该镜像包含：
+- ARM64 (aarch64-linux-gnu) 交叉编译工具链
+- 所有必要的 ARM64 静态库（libc.a, libtalloc.a 等）
+- 完整的开发环境
 
 ## License
 

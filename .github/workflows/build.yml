@@ -75,8 +75,12 @@ jobs:
           curl -sL https://www.samba.org/ftp/talloc/talloc-2.4.0.tar.gz -o talloc.tar.gz
           tar -xzf talloc.tar.gz
           cd talloc-2.4.0
-          # Compile talloc.c directly to static library
-          gcc -c -fPIC talloc.c -o talloc.o -DHAVE_CONFIG_H
+          # Compile talloc.c with all necessary includes
+          gcc -c -fPIC talloc.c -o talloc.o \
+            -DHAVE_CONFIG_H \
+            -I. \
+            -Ibuildtools/build \
+            -Ibuildtools/build/wscript
           ar rcs libtalloc.a talloc.o
           sudo cp libtalloc.a /usr/local/lib/
           sudo cp talloc.h /usr/local/include/

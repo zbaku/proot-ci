@@ -79,8 +79,8 @@ jobs:
           gcc -c -fPIC talloc.c -o talloc.o \
             -DHAVE_CONFIG_H \
             -I. \
-            -Ibuildtools/build \
-            -Ibuildtools/build/wscript
+            -Ilib/replace \
+            -Ilib/ccan
           ar rcs libtalloc.a talloc.o
           sudo cp libtalloc.a /usr/local/lib/
           sudo cp talloc.h /usr/local/include/

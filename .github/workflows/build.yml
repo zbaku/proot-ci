@@ -81,8 +81,8 @@ jobs:
       - name: Build proot
         run: |
           cd proot-src
-          # Set PKG_CONFIG_PATH to find ARM64 libraries
-          export PKG_CONFIG_PATH="/usr/aarch64-linux-gnu/lib/pkgconfig:$PKG_CONFIG_PATH"
+          # Set PKG_CONFIG_PATH to find ARM64 libraries (correct path)
+          export PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH"
           make -C src proot GIT=false \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CC=aarch64-linux-gnu-gcc \

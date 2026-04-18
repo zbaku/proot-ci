@@ -1,6 +1,6 @@
 # proot CI/CD
 
-手动构建 proot 静态二进制 ARM64 glibc 版本，针对 Android 高版本优化。
+构建 proot 静态二进制 ARM64 glibc 版本，针对 Android 高版本优化。
 
 ## 功能
 

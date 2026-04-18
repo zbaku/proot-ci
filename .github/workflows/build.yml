@@ -47,34 +47,25 @@ jobs:
           echo "Version ${{ steps.check-release.outputs.tag }} already released. Skipping."
           exit 78
 
-      - name: Install Miniconda
+      - name: Download ARM64 cross-compile toolchain
         run: |
-          wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh
-          bash /tmp/miniconda.sh -b -p /opt/conda
-          source /opt/conda/etc/profile.d/conda.sh
+          # Download Linaro ARM64 toolchain (gcc-linaro-11.3.1)
+          wget -q https://releases.linaro.org/components/toolchain/binaries/11.3-2022.03/aarch64-linux-gnu/gcc-linaro-11.3.1-2022.03-x86_64_aarch64-linux-gnu.tar.xz
+          tar -xf gcc-linaro-11.3.1-2022.03-x86_64_aarch64-linux-gnu.tar.xz -C /opt
+          echo "/opt/gcc-linaro-11.3.1-2022.03-x86_64_aarch64-linux-gnu/bin" >> $GITHUB_PATH
 
-      - name: Install ARM64 cross-compile toolchain via conda
+      - name: Install dependencies
         run: |
-          source /opt/conda/etc/profile.d/conda.sh
-          conda create -y -n proot-build \
-            -c conda-forge \
-            gcc_linux-aarch64 \
-            libcblas \
-            libarchive \
-            make \
-            pkg-config
-          conda activate proot-build
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libtalloc-dev libarchive-dev make git pkg-config
 
       - name: Build proot
         env:
+          CROSS_COMPILE: aarch64-linux-gnu-
           CC: aarch64-linux-gnu-gcc
-          CXX: aarch64-linux-gnu-g++
-          AR: aarch64-linux-gnu-ar
-          LD: aarch64-linux-gnu-ld
-          PKG_CONFIG_PATH: /opt/conda/envs/proot-build/aarch64-linux-gnu/lib/pkgconfig
         run: |
-          source /opt/conda/etc/profile.d/conda.sh
-          conda activate proot-build
+          export PATH="/opt/gcc-linaro-11.3.1-2022.03-x86_64_aarch64-linux-gnu/bin:$PATH"
           cd proot-src
           make -C src proot GIT=false \
             CROSS_COMPILE=aarch64-linux-gnu- \
